@@ -1,4 +1,4 @@
-name: Mail to Telegram
+name: Mail to Telegram v2
 
 on:
   workflow_dispatch:
