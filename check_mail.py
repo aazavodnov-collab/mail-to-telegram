@@ -12,6 +12,8 @@ IMAP_PASS = os.environ["IMAP_PASS"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
+LAST_UID_FILE = "last_uid.txt"
+
 # ----------------------------
 # helpers
 # ----------------------------
@@ -58,50 +60,65 @@ def send_telegram(text):
             "text": text
         }, timeout=10)
     except Exception as e:
-        print("TELEGRAM ERROR:", e)
+        print("TG ERROR:", e)
 
 # ----------------------------
-# MAIN SAFE FLOW
+# read last UID
 # ----------------------------
 
 try:
-    mail = imaplib.IMAP4_SSL(IMAP_SERVER)
-    mail.login(IMAP_USER, IMAP_PASS)
-    mail.select("INBOX")
+    with open(LAST_UID_FILE, "r") as f:
+        last_uid = int(f.read().strip() or "0")
+except:
+    last_uid = 0
 
-    status, data = mail.uid("search", None, "ALL")
+print("LAST UID:", last_uid)
 
-    if status != "OK":
-        print("SEARCH FAILED")
-        exit(0)
+# ----------------------------
+# connect IMAP
+# ----------------------------
 
-    uids = data[0].split()
-    print("FOUND UIDS:", len(uids))
+mail = imaplib.IMAP4_SSL(IMAP_SERVER)
+mail.login(IMAP_USER, IMAP_PASS)
+mail.select("INBOX")
 
-    for uid in uids:
-        try:
-            status, msg_data = mail.uid("fetch", uid, "(RFC822)")
+status, data = mail.uid("search", None, "ALL")
+uids = data[0].split()
 
-            if not msg_data or not msg_data[0]:
-                continue
+new_last_uid = last_uid
 
-            raw = msg_data[0][1]
-            if not raw:
-                continue
+print("FOUND UIDS:", len(uids))
 
-            msg = email.message_from_bytes(raw)
+# ----------------------------
+# process only NEW emails
+# ----------------------------
 
-            subject = decode_mime_words(msg.get("subject"))
-            from_ = decode_mime_words(msg.get("from"))
-            body = get_body(msg).strip()
+for uid in uids:
+    uid_int = int(uid)
 
-            if not body:
-                body = "(нет текста)"
+    if uid_int <= last_uid:
+        continue
 
-            if len(body) > 3000:
-                body = body[:3000] + "\n...(обрезано)"
+    try:
+        status, msg_data = mail.uid("fetch", uid, "(RFC822)")
 
-            text = f"""📩 Новое письмо
+        if not msg_data or not msg_data[0]:
+            continue
+
+        raw = msg_data[0][1]
+        msg = email.message_from_bytes(raw)
+
+        subject = decode_mime_words(msg.get("subject"))
+        from_ = decode_mime_words(msg.get("from"))
+        body = get_body(msg).strip()
+
+        if not body:
+            body = "(нет текста)"
+
+        if len(body) > 3000:
+            body = body[:3000] + "\n...(обрезано)"
+
+        text = f"""📩 Новое письмо
 
 👤 От: {from_}
 📌 Тема: {subject}
@@ -109,16 +126,21 @@ try:
 📝 {body}
 """
 
-            send_telegram(text)
+        send_telegram(text)
 
-        except Exception as e:
-            print("ERROR PROCESSING UID:", uid, str(e))
-            continue
+        new_last_uid = max(new_last_uid, uid_int)
 
-    try:
-        mail.logout()
-    except:
-        pass
+    except Exception as e:
+        print("ERROR UID:", uid, e)
+        continue
 
-except Exception as e:
-    print("FATAL ERROR:", e)
+# ----------------------------
+# save last UID
+# ----------------------------
+
+with open(LAST_UID_FILE, "w") as f:
+    f.write(str(new_last_uid))
+
+print("UPDATED LAST UID:", new_last_uid)
+
+mail.logout()
