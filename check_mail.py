@@ -59,6 +59,10 @@ mail.select("inbox")
 
 status, messages = mail.search(None, "UNSEEN")
 
+print("STATUS:", status)
+print("MESSAGES:", messages)
+print("FOUND COUNT:", len(messages[0].split()) if messages[0] else 0)
+
 for num in messages[0].split():
     status, msg_data = mail.fetch(num, "(RFC822)")
     msg = email.message_from_bytes(msg_data[0][1])
