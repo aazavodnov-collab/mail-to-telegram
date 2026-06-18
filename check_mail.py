@@ -112,7 +112,5 @@ for uid in uids:
 
     send_telegram(text)
 
-    break
-
 
 mail.logout()
