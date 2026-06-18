@@ -69,26 +69,9 @@ print("FOUND UIDS:", len(uids))
 # PROCESS EMAILS
 # -----------------------------
 for uid in uids:
+    print("UID:", uid)
+    send_telegram("DEBUG: loop works, UID received")
+    break
 
-    status, msg_data = mail.uid("fetch", uid, "(RFC822)")
-    msg = email.message_from_bytes(msg_data[0][1])
-
-    subject = decode_mime_words(msg["subject"])
-    from_ = decode_mime_words(msg.get("from"))
-    body = get_body(msg).strip()
-
-    if len(body) > 3500:
-        body = body[:3500] + "\n\n…(обрезано)"
-
-    text = f"""📩 <b>Новое письмо</b>
-
-👤 <b>От:</b> {from_}
-📌 <b>Тема:</b> {subject}
-
-📝 <b>Текст:</b>
-{body}
-"""
-
-    send_telegram(text)
 
 mail.logout()
