@@ -73,9 +73,19 @@ for uid in uids:
 
     status, msg_data = mail.uid("fetch", uid, "(RFC822)")
 
-    raw_email = msg_data[0][1]
+    # 🔴 защита от странного ответа IMAP
+    if not msg_data or not msg_data[0]:
+        print("EMPTY FETCH for UID:", uid)
+        continue
 
-    msg = email.message_from_bytes(raw_email)
+    raw = msg_data[0][1]
+
+    # 🔴 защита если вдруг формат другой
+    if not raw:
+        print("NO RAW DATA for UID:", uid)
+        continue
+
+    msg = email.message_from_bytes(raw)
 
     subject = decode_mime_words(msg["subject"])
     from_ = decode_mime_words(msg.get("from"))
@@ -94,6 +104,12 @@ for uid in uids:
 
 📝 {body}
 """
+
+    print("SENDING TELEGRAM...")
+    send_telegram(text)
+
+    print("SENT OK")
+    break
 
     send_telegram(text)
 
