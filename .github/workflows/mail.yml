@@ -24,3 +24,11 @@ jobs:
           IMAP_PASS: ${{ secrets.IMAP_PASS }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      - name: Commit last UID
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add last_uid.txt
+          git commit -m "update last uid" || echo "no changes"
+          git push
