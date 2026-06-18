@@ -12,6 +12,10 @@ IMAP_PASS = os.environ["IMAP_PASS"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
+# ----------------------------
+# helpers
+# ----------------------------
+
 def decode_mime_words(s):
     if not s:
         return ""
@@ -22,81 +26,82 @@ def decode_mime_words(s):
     )
 
 def get_body(msg):
-    if msg.is_multipart():
-        for part in msg.walk():
-            content_type = part.get_content_type()
-            content_disposition = str(part.get("Content-Disposition"))
+    try:
+        if msg.is_multipart():
+            for part in msg.walk():
+                ctype = part.get_content_type()
+                disp = str(part.get("Content-Disposition"))
 
-            if content_type == "text/plain" and "attachment" not in content_disposition:
-                return part.get_payload(decode=True).decode(errors="ignore")
+                if ctype == "text/plain" and "attachment" not in disp:
+                    return part.get_payload(decode=True).decode(errors="ignore")
 
-        for part in msg.walk():
-            if part.get_content_type() == "text/html":
-                html = part.get_payload(decode=True).decode(errors="ignore")
-                return BeautifulSoup(html, "html.parser").get_text()
+            for part in msg.walk():
+                if part.get_content_type() == "text/html":
+                    html = part.get_payload(decode=True).decode(errors="ignore")
+                    return BeautifulSoup(html, "html.parser").get_text()
 
-    else:
-        payload = msg.get_payload(decode=True)
-        if payload:
-            return payload.decode(errors="ignore")
+        else:
+            payload = msg.get_payload(decode=True)
+            if payload:
+                return payload.decode(errors="ignore")
+
+    except:
+        return ""
 
     return ""
 
 def send_telegram(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": text
-    })
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "text": text
+        }, timeout=10)
+    except Exception as e:
+        print("TELEGRAM ERROR:", e)
 
-# -----------------------------
-# IMAP CONNECT
-# -----------------------------
-mail = imaplib.IMAP4_SSL(IMAP_SERVER)
-mail.login(IMAP_USER, IMAP_PASS)
-mail.select("INBOX")
+# ----------------------------
+# MAIN SAFE FLOW
+# ----------------------------
 
-# -----------------------------
-# UID SEARCH (ВАЖНО)
-# -----------------------------
-status, data = mail.uid("search", None, "ALL")
-uids = data[0].split()
+try:
+    mail = imaplib.IMAP4_SSL(IMAP_SERVER)
+    mail.login(IMAP_USER, IMAP_PASS)
+    mail.select("INBOX")
 
-print("FOUND UIDS:", len(uids))
+    status, data = mail.uid("search", None, "ALL")
 
-# -----------------------------
-# PROCESS EMAILS
-# -----------------------------
-for uid in uids:
-    print("UID:", uid)
+    if status != "OK":
+        print("SEARCH FAILED")
+        exit(0)
 
-    status, msg_data = mail.uid("fetch", uid, "(RFC822)")
+    uids = data[0].split()
+    print("FOUND UIDS:", len(uids))
 
-    # 🔴 защита от странного ответа IMAP
-    if not msg_data or not msg_data[0]:
-        print("EMPTY FETCH for UID:", uid)
-        continue
+    for uid in uids:
+        try:
+            status, msg_data = mail.uid("fetch", uid, "(RFC822)")
 
-    raw = msg_data[0][1]
+            if not msg_data or not msg_data[0]:
+                continue
 
-    # 🔴 защита если вдруг формат другой
-    if not raw:
-        print("NO RAW DATA for UID:", uid)
-        continue
+            raw = msg_data[0][1]
+            if not raw:
+                continue
 
-    msg = email.message_from_bytes(raw)
+            msg = email.message_from_bytes(raw)
 
-    subject = decode_mime_words(msg["subject"])
-    from_ = decode_mime_words(msg.get("from"))
-    body = get_body(msg).strip()
+            subject = decode_mime_words(msg.get("subject"))
+            from_ = decode_mime_words(msg.get("from"))
+            body = get_body(msg).strip()
 
-    if not body:
-        body = "(нет текста)"
+            if not body:
+                body = "(нет текста)"
 
-    if len(body) > 3000:
-        body = body[:3000] + "\n...(обрезано)"
+            if len(body) > 3000:
+                body = body[:3000] + "\n...(обрезано)"
 
-    text = f"""📩 Новое письмо
+            text = f"""📩 Новое письмо
 
 👤 От: {from_}
 📌 Тема: {subject}
@@ -104,13 +109,16 @@ for uid in uids:
 📝 {body}
 """
 
-    print("SENDING TELEGRAM...")
-    send_telegram(text)
+            send_telegram(text)
 
-    print("SENT OK")
-    break
+        except Exception as e:
+            print("ERROR PROCESSING UID:", uid, str(e))
+            continue
 
-    send_telegram(text)
+    try:
+        mail.logout()
+    except:
+        pass
 
-
-mail.logout()
+except Exception as e:
+    print("FATAL ERROR:", e)
