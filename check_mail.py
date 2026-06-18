@@ -64,6 +64,7 @@ print("MESSAGES:", messages)
 print("FOUND COUNT:", len(messages[0].split()) if messages[0] else 0)
 
 for num in messages[0].split():
+    send_telegram("TEST: Telegram работает")
     status, msg_data = mail.fetch(num, "(RFC822)")
     msg = email.message_from_bytes(msg_data[0][1])
 
