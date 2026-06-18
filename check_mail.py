@@ -22,17 +22,14 @@ def decode_mime_words(s):
     )
 
 def get_body(msg):
-    # если письмо multipart
     if msg.is_multipart():
         for part in msg.walk():
             content_type = part.get_content_type()
             content_disposition = str(part.get("Content-Disposition"))
 
-            # берём текстовую часть
             if content_type == "text/plain" and "attachment" not in content_disposition:
                 return part.get_payload(decode=True).decode(errors="ignore")
 
-        # если text/plain нет — пробуем HTML
         for part in msg.walk():
             if part.get_content_type() == "text/html":
                 html = part.get_payload(decode=True).decode(errors="ignore")
@@ -53,26 +50,33 @@ def send_telegram(text):
         "parse_mode": "HTML"
     })
 
+# -----------------------------
+# IMAP CONNECT
+# -----------------------------
 mail = imaplib.IMAP4_SSL(IMAP_SERVER)
 mail.login(IMAP_USER, IMAP_PASS)
-mail.select("inbox")
+mail.select("INBOX")
 
-status, messages = mail.search(None, "UNSEEN")
+# -----------------------------
+# UID SEARCH (ВАЖНО)
+# -----------------------------
+status, data = mail.uid("search", None, "ALL")
+uids = data[0].split()
 
-print("STATUS:", status)
-print("MESSAGES:", messages)
-print("FOUND COUNT:", len(messages[0].split()) if messages[0] else 0)
+print("FOUND UIDS:", len(uids))
 
-for num in messages[0].split():
-    send_telegram("TEST: Telegram работает")
-    status, msg_data = mail.fetch(num, "(RFC822)")
+# -----------------------------
+# PROCESS EMAILS
+# -----------------------------
+for uid in uids:
+
+    status, msg_data = mail.uid("fetch", uid, "(RFC822)")
     msg = email.message_from_bytes(msg_data[0][1])
 
     subject = decode_mime_words(msg["subject"])
     from_ = decode_mime_words(msg.get("from"))
     body = get_body(msg).strip()
 
-    # обрезаем, чтобы Telegram не ругался на лимит
     if len(body) > 3500:
         body = body[:3500] + "\n\n…(обрезано)"
 
